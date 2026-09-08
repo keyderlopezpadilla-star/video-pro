@@ -17,6 +17,16 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const ffmpeg = require('fluent-ffmpeg');
 
+// Permitimos overrides explicitos de los binarios de ffmpeg/ffprobe via env.
+// Si no se definen, fluent-ffmpeg los resuelve del PATH (el paquete apt
+// `ffmpeg` de Debian provee tanto ffmpeg como ffprobe en el PATH por defecto).
+if (process.env.FFMPEG_PATH) {
+  ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH);
+}
+if (process.env.FFPROBE_PATH) {
+  ffmpeg.setFfprobePath(process.env.FFPROBE_PATH);
+}
+
 const {
   DEVICE_TEMPLATES,
   readMetadata,
@@ -171,7 +181,11 @@ router.post('/read', upload.single('file'), async function (req, res) {
     const metadata = await readMetadata(filePath);
     res.json({ metadata: metadata });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    // eslint-disable-next-line no-console
+    console.error('[POST /api/metadata/read] error:', err && err.stack ? err.stack : err);
+    res.status(500).json({
+      error: (err && err.message) || 'Error interno al leer la metadata del archivo.'
+    });
   } finally {
     await safeRemove(filePath);
   }
@@ -205,14 +219,24 @@ router.post('/edit-image', upload.single('file'), async function (req, res) {
     res.download(filePath, downloadName, function (err) {
       // Limpieza tras finalizar la descarga (con o sin error de streaming).
       safeRemove(filePath);
-      if (err && !res.headersSent) {
-        res.status(500).json({ error: err.message });
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error('[POST /api/metadata/edit-image] download error:', err && err.stack ? err.stack : err);
+        if (!res.headersSent) {
+          res.status(500).json({
+            error: (err && err.message) || 'Error interno al descargar la imagen procesada.'
+          });
+        }
       }
     });
   } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[POST /api/metadata/edit-image] error:', err && err.stack ? err.stack : err);
     await safeRemove(filePath);
     if (!res.headersSent) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({
+        error: (err && err.message) || 'Error interno al procesar la imagen.'
+      });
     }
   }
 });
@@ -265,8 +289,9 @@ router.post('/edit-video', upload.single('file'), async function (req, res) {
         continue;
       }
       const value = String(tags[chosenTag]).replace(/"/g, '');
-      outputOptions.push('-metadata');
-      outputOptions.push(`${metaKey}=${value}`);
+      // fluent-ffmpeg espera cada opcion como UN solo elemento del array; el
+      // flag y su valor van juntos en una sola cadena ('-metadata key=value').
+      outputOptions.push(`-metadata ${metaKey}=${value}`);
       appliedTags.push(chosenTag);
     }
 
@@ -297,15 +322,25 @@ router.post('/edit-video', upload.single('file'), async function (req, res) {
       // Limpieza de entrada y salida tras la descarga.
       safeRemove(inputPath);
       safeRemove(outputPath);
-      if (err && !res.headersSent) {
-        res.status(500).json({ error: err.message });
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error('[POST /api/metadata/edit-video] download error:', err && err.stack ? err.stack : err);
+        if (!res.headersSent) {
+          res.status(500).json({
+            error: (err && err.message) || 'Error interno al descargar el video procesado.'
+          });
+        }
       }
     });
   } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[POST /api/metadata/edit-video] error:', err && err.stack ? err.stack : err);
     await safeRemove(inputPath);
     await safeRemove(outputPath);
     if (!res.headersSent) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({
+        error: (err && err.message) || 'Error interno al procesar el video.'
+      });
     }
   }
 });

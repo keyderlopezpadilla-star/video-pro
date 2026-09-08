@@ -108,9 +108,25 @@ sudo apt-get install libimage-exiftool-perl
 # Descargar desde https://exiftool.org/
 ```
 
-> El backend usa el binario provisto por `dist-exiftool`, por lo que ExifTool no
-> necesita estar en el PATH. Instalarlo a nivel de sistema es recomendable como
-> respaldo.
+> El backend **prefiere un `exiftool` de sistema en el PATH** (instalado vía
+> `libimage-exiftool-perl` en Linux o `brew install exiftool` en macOS), porque
+> es el más fiable dentro de contenedores. Si no encuentra uno, cae al binario
+> empaquetado por `dist-exiftool` (útil para dev local sin instalación de
+> sistema). El orden de resolución es: `EXIFTOOL_PATH` → `exiftool` del PATH →
+> `dist-exiftool`.
+
+#### Variables de entorno para binarios nativos
+
+Opcionalmente puedes forzar las rutas de los binarios (útil si no están en el
+PATH o quieres una versión concreta):
+
+- `EXIFTOOL_PATH`: ruta a un ejecutable `exiftool` específico.
+- `FFMPEG_PATH`: ruta a un ejecutable `ffmpeg` específico.
+- `FFPROBE_PATH`: ruta a un ejecutable `ffprobe` específico.
+
+Si no se definen, el backend resuelve `exiftool`, `ffmpeg` y `ffprobe` desde el
+PATH del sistema (en el contenedor los proveen `libimage-exiftool-perl` y el
+paquete `ffmpeg` de Debian).
 
 ### 3. Instalar ffmpeg (requerido para editar metadata de videos)
 
@@ -245,3 +261,29 @@ docker run -p 3000:3000 metadata-editor
 
 y, para el despliegue gestionado, el blueprint de Render (o Railway) descrito
 arriba.
+
+### Corrección del HTTP 500 al procesar (imagen/video)
+
+Se corrigió un **HTTP 500** que ocurría en Render/Docker al subir un archivo y
+pulsar *Procesar* (endpoints `POST /api/metadata/edit-image` y
+`POST /api/metadata/edit-video`). Cambios clave:
+
+- **Imagen**: `exifHelper.js` ahora resuelve el binario de exiftool con la
+  precedencia `EXIFTOOL_PATH` → `exiftool` del PATH → `dist-exiftool`, en vez de
+  usar siempre el binario empaquetado (v10.53), que suele fallar dentro de
+  contenedores Debian slim.
+- **Video**: `routes/metadata.js` ahora envía cada tag `-metadata` como **una
+  sola cadena** (`-metadata clave=valor`) a `fluent-ffmpeg`, en lugar de partir
+  el flag y su valor en dos elementos del array de `outputOptions`. Además
+  honra `FFMPEG_PATH` / `FFPROBE_PATH` si están definidos.
+- **Visibilidad de errores**: los tres endpoints (`/read`, `/edit-image`,
+  `/edit-video`) ahora registran el error completo con `console.error` (visible
+  en los logs de Render) y garantizan un mensaje de error no vacío hacia el
+  cliente.
+
+> ⚠️ **Esta corrección se validó ESTÁTICAMENTE únicamente** (`node --check` sobre
+> los `.js` y validación de `package.json`), porque el sandbox está sin red y no
+> tiene los binarios `exiftool` / `ffmpeg` ni `node_modules` instalados. **Debe
+> confirmarse por el usuario** redesplegando en Render (o con `docker build` +
+> `docker run` en local) y repitiendo el flujo *subir archivo → Procesar* con
+> **una imagen y un video**.

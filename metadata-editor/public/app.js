@@ -421,12 +421,19 @@
         fetch(endpoint, { method: 'POST', body: form })
             .then(function (res) {
                 if (!res.ok) {
+                    // Intentamos leer el cuerpo JSON {error:'...'} del backend. Si
+                    // el parseo falla (respuesta sin JSON), usamos el fallback de
+                    // estado HTTP. Importante: el .catch va SOLO sobre res.json()
+                    // para no tragarse el error que lanzamos con el mensaje real.
                     return res
                         .json()
-                        .then(function (data) {
-                            throw new Error((data && data.error) || 'HTTP ' + res.status);
-                        })
                         .catch(function () {
+                            return null;
+                        })
+                        .then(function (data) {
+                            if (data && data.error) {
+                                throw new Error(data.error);
+                            }
                             throw new Error('Error del servidor (HTTP ' + res.status + ')');
                         });
                 }
@@ -553,12 +560,17 @@
         fetch(API_BASE + '/read', { method: 'POST', body: form })
             .then(function (res) {
                 if (!res.ok) {
+                    // El .catch va SOLO sobre res.json() para no tragarse el
+                    // error con el mensaje real del backend.
                     return res
                         .json()
-                        .then(function (data) {
-                            throw new Error((data && data.error) || 'HTTP ' + res.status);
-                        })
                         .catch(function () {
+                            return null;
+                        })
+                        .then(function (data) {
+                            if (data && data.error) {
+                                throw new Error(data.error);
+                            }
                             throw new Error('Error del servidor (HTTP ' + res.status + ')');
                         });
                 }

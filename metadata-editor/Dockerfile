@@ -11,9 +11,12 @@
 FROM node:20-bookworm-slim
 
 # Binarios nativos requeridos en tiempo de ejecucion:
-# - ffmpeg: fluent-ffmpeg NO trae binario, debe existir en el sistema.
-# - libimage-exiftool-perl: perl para el exiftool de dist-exiftool y un
-#   exiftool de sistema como respaldo.
+# - ffmpeg: fluent-ffmpeg NO trae binario, debe existir en el sistema. El
+#   paquete apt `ffmpeg` provee tanto ffmpeg como ffprobe en el PATH.
+# - libimage-exiftool-perl: provee un `exiftool` de sistema en el PATH. El
+#   backend PREFIERE este exiftool de sistema (es el mas fiable dentro de
+#   Debian slim) y solo cae al binario empaquetado por dist-exiftool como
+#   respaldo para dev local. Se puede forzar otro binario con EXIFTOOL_PATH.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
      ffmpeg \

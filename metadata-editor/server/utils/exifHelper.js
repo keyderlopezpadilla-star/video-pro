@@ -4,12 +4,83 @@
  * exifHelper.js
  *
  * Utilidades para leer y escribir metadata EXIF usando node-exiftool.
- * Usa el binario que provee dist-exiftool, de modo que exiftool no necesita
- * estar instalado en el PATH del sistema.
+ *
+ * Resolucion del binario de exiftool (una sola vez, al cargar el modulo), en
+ * orden de precedencia:
+ *   1) process.env.EXIFTOOL_PATH (override explicito).
+ *   2) Un `exiftool` de sistema en el PATH (en el contenedor lo provee
+ *      libimage-exiftool-perl; es el mas fiable dentro de Debian slim).
+ *   3) El binario empaquetado por dist-exiftool (respaldo para dev local sin
+ *      instalacion de sistema). Ese binario (v10.53) suele fallar dentro de
+ *      contenedores Debian slim por bits de ejecucion perdidos / desajuste de
+ *      Perl, por eso solo se usa como ultimo recurso.
  */
 
-const exiftoolBin = require('dist-exiftool');
+const { execFileSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const { ExiftoolProcess } = require('node-exiftool');
+
+/**
+ * Busca un ejecutable `exiftool` recorriendo los directorios del PATH.
+ * @returns {string|null} ruta absoluta al ejecutable, o null si no se encuentra
+ */
+function findExiftoolOnPath() {
+  const pathEnv = process.env.PATH || '';
+  const sep = process.platform === 'win32' ? ';' : ':';
+  const exeNames = process.platform === 'win32'
+    ? ['exiftool.exe', 'exiftool.pl', 'exiftool']
+    : ['exiftool'];
+  const dirs = pathEnv.split(sep).filter(Boolean);
+  for (const dir of dirs) {
+    for (const exe of exeNames) {
+      const candidate = path.join(dir, exe);
+      try {
+        fs.accessSync(candidate, fs.constants.X_OK);
+        return candidate;
+      } catch (err) {
+        // No ejecutable en esta ruta; probamos la siguiente.
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Resuelve el binario de exiftool una sola vez. Nunca lanza: cualquier fallo
+ * de deteccion cae al siguiente candidato y, en ultima instancia, a
+ * dist-exiftool.
+ * @returns {string} ruta/comando del binario de exiftool a usar
+ */
+function resolveExiftoolBin() {
+  // 1) Override explicito por env.
+  if (process.env.EXIFTOOL_PATH) {
+    return process.env.EXIFTOOL_PATH;
+  }
+
+  // 2) exiftool de sistema en el PATH. Preferimos una ruta absoluta detectada
+  //    recorriendo el PATH; si no, confirmamos que `exiftool -ver` responde.
+  try {
+    const onPath = findExiftoolOnPath();
+    if (onPath) {
+      return onPath;
+    }
+    execFileSync('exiftool', ['-ver'], { stdio: 'ignore' });
+    return 'exiftool';
+  } catch (err) {
+    // No hay exiftool de sistema utilizable; caemos al respaldo.
+  }
+
+  // 3) Respaldo: binario empaquetado por dist-exiftool (dev local).
+  try {
+    return require('dist-exiftool');
+  } catch (err) {
+    // Como ultimo recurso confiamos en un `exiftool` resoluble en runtime.
+    return 'exiftool';
+  }
+}
+
+const resolvedExiftoolBin = resolveExiftoolBin();
 
 /**
  * Plantillas de dispositivos. Cada plantilla incluye los campos EXIF que se
@@ -218,14 +289,17 @@ function buildTagsFromCustom(custom) {
  * @returns {Promise<Object>} objeto de metadata (data del primer resultado)
  */
 async function readMetadata(filePath) {
-  const ep = new ExiftoolProcess(exiftoolBin);
+  const ep = new ExiftoolProcess(resolvedExiftoolBin);
   try {
     await ep.open();
     const result = await ep.readMetadata(filePath, ['-File:all']);
     if (result && result.error) {
       // exiftool puede reportar errores no fatales; los propagamos si no hay data.
       if (!result.data || result.data.length === 0) {
-        throw new Error(result.error);
+        throw new Error(
+          result.error ||
+          'exiftool no pudo leer la metadata (binario: ' + resolvedExiftoolBin + ')'
+        );
       }
     }
     const data = result && Array.isArray(result.data) ? result.data[0] : result && result.data;
@@ -248,13 +322,17 @@ async function readMetadata(filePath) {
  * @returns {Promise<Object>} resultado de exiftool
  */
 async function writeImageMetadata(filePath, tags) {
-  const ep = new ExiftoolProcess(exiftoolBin);
+  const ep = new ExiftoolProcess(resolvedExiftoolBin);
   try {
     await ep.open();
     // overwrite_original evita generar copias *_original.
     const result = await ep.writeMetadata(filePath, tags, ['overwrite_original']);
     if (result && result.error && (!result.data || result.data === null)) {
-      throw new Error(result.error);
+      // exiftool puede reportar un error con mensaje vacio; garantizamos texto.
+      throw new Error(
+        result.error ||
+        'exiftool no pudo escribir la metadata (binario: ' + resolvedExiftoolBin + ')'
+      );
     }
     return result;
   } finally {
