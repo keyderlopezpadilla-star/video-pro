@@ -1,0 +1,20 @@
+# Render Blueprint para Metadata Editor Pro
+#
+# Despliega la app como un servicio web Docker de proceso persistente. Apunta
+# de forma inequivoca a metadata-editor/ (dockerContext + dockerfilePath) para
+# que los archivos semilla obsoletos de la raiz del repo nunca se sirvan.
+#
+# Render inyecta la variable PORT automaticamente; server.js ya la respeta.
+# Definimos HOST=0.0.0.0 para que el servidor sea alcanzable dentro del
+# contenedor (el codigo usa 127.0.0.1 por defecto por seguridad).
+services:
+  - type: web
+    name: metadata-editor
+    runtime: docker
+    plan: free
+    dockerfilePath: ./metadata-editor/Dockerfile
+    dockerContext: ./metadata-editor
+    healthCheckPath: /
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
