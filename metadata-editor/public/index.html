@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metadata Editor Pro</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Metadata Editor Pro</h1>
+            <p class="subtitle">Editor de metadatos EXIF para imágenes y videos</p>
+        </header>
+
+        <main>
+
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="edit">Editar Metadata</button>
+                <button class="tab-btn" data-tab="read">Leer Metadata</button>
+                <button class="tab-btn" data-tab="custom">Metadata Personalizado</button>
+            </div>
+
+
+            <div class="tab-content active" id="edit-tab">
+                <div class="upload-zone" id="upload-zone">
+                    <div class="upload-icon">📁</div>
+                    <p>Arrastra y suelta tu archivo aquí</p>
+                    <p class="upload-hint">o haz clic para seleccionar</p>
+                    <input type="file" id="file-input" accept="image/*,video/*" hidden="">
+                    <p class="file-types">Soporta: JPG, PNG, TIFF, MP4, MOV, AVI</p>
+                </div>
+
+                <div class="file-preview" id="file-preview" style="display: none;">
+                    <div class="preview-content">
+                        <div id="preview-container"></div>
+                        <div class="file-info">
+                            <span id="filename"></span>
+                            <span id="filesize"></span>
+                        </div>
+                    </div>
+                    <button class="btn-remove" id="remove-file">✕</button>
+                </div>
+
+                <div class="device-selector" id="device-selector" style="display: none;">
+                    <h3>Selecciona el dispositivo</h3>
+                    <div class="device-grid" id="device-grid">
+
+                    </div>
+                </div>
+
+                <div class="custom-metadata" id="custom-metadata" style="display: none;">
+                    <h3>Metadata Personalizada (Opcional)</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Make (Fabricante)</label>
+                            <input type="text" id="custom-make" placeholder="Ej: Apple, Samsung, Sony">
+                        </div>
+                        <div class="form-group">
+                            <label>Model (Modelo)</label>
+                            <input type="text" id="custom-model" placeholder="Ej: iPhone 15 Pro">
+                        </div>
+                        <div class="form-group">
+                            <label>Software</label>
+                            <input type="text" id="custom-software" placeholder="Versión del software">
+                        </div>
+                        <div class="form-group">
+                            <label>Fecha de captura</label>
+                            <input type="datetime-local" id="custom-date">
+                        </div>
+                        <div class="form-group">
+                            <label>Latitud GPS</label>
+                            <input type="text" id="custom-lat" placeholder="Ej: 40.7128 N">
+                        </div>
+                        <div class="form-group">
+                            <label>Longitud GPS</label>
+                            <input type="text" id="custom-lon" placeholder="Ej: 74.0060 W">
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn-primary" id="process-btn" style="display: none;" disabled="">
+                    <span class="btn-text">Procesar Archivo</span>
+                    <span class="spinner" style="display: none;">⏳</span>
+                </button>
+            </div>
+
+
+            <div class="tab-content" id="read-tab">
+                <div class="upload-zone" id="read-upload-zone">
+                    <div class="upload-icon">🔍</div>
+                    <p>Sube un archivo para analizar sus metadatos</p>
+                    <input type="file" id="read-file-input" accept="image/*,video/*" hidden="">
+                </div>
+
+                <div class="metadata-viewer" id="metadata-viewer" style="display: none;">
+                    <h3>Metadatos del archivo</h3>
+                    <div class="metadata-tree" id="metadata-tree"></div>
+                </div>
+            </div>
+
+
+            <div class="tab-content" id="custom-tab">
+                <div class="json-editor">
+                    <h3>Editor JSON de Metadata</h3>
+                    <textarea id="json-metadata" placeholder="{
+  &quot;Make&quot;: &quot;Custom&quot;,
+  &quot;Model&quot;: &quot;Device&quot;,
+  &quot;Software&quot;: &quot;1.0&quot;
+}"></textarea>
+                    <button class="btn-secondary" id="validate-json">Validar JSON</button>
+                </div>
+            </div>
+
+
+            <div class="result-section" id="result-section" style="display: none;">
+                <div class="success-message">
+                    <span class="icon">✓</span>
+                    <div>
+                        <h3>¡Procesamiento completado!</h3>
+                        <p>Tu archivo está listo para descargar</p>
+                    </div>
+                </div>
+                <a href="#" class="btn-download" id="download-link" download="">
+                    Descargar archivo modificado
+                </a>
+            </div>
+        </main>
+
+        <footer>
+            <p>Uso educativo y de testing • No para distribución pública</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

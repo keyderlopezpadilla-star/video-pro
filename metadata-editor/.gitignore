@@ -1,0 +1,11 @@
+# Dependencias
+node_modules/
+
+# Archivos temporales de uploads (se conserva el .gitkeep)
+uploads/*
+!uploads/.gitkeep
+
+# Logs y varios
+*.log
+npm-debug.log*
+.DS_Store
