@@ -325,6 +325,54 @@
         }
     }
 
+    /**
+     * Muestra (o limpia) un aviso en la seccion de resultado indicando que
+     * campos de metadata se aplicaron al video y cuales se ignoraron, ya que los
+     * contenedores de video solo soportan un subconjunto de los tags EXIF.
+     * @param {boolean} isVideoFile si el archivo procesado era video
+     * @param {string} applied lista separada por comas de tags aplicados
+     * @param {string} ignored lista separada por comas de tags ignorados
+     */
+    function showVideoMetaNote(isVideoFile, applied, ignored) {
+        var resultSection = $('result-section');
+        if (!resultSection) {
+            return;
+        }
+
+        var note = resultSection.querySelector('.video-note');
+
+        // Solo aplica a video; para imagen limpiamos cualquier aviso previo.
+        if (!isVideoFile) {
+            if (note) {
+                note.parentNode.removeChild(note);
+            }
+            return;
+        }
+
+        if (!note) {
+            note = document.createElement('div');
+            note.className = 'video-note';
+            resultSection.appendChild(note);
+        }
+
+        var appliedList = applied ? applied.split(',').filter(Boolean) : [];
+        var ignoredList = ignored ? ignored.split(',').filter(Boolean) : [];
+
+        var parts = [];
+        parts.push('<strong>Nota sobre metadata de video:</strong> los contenedores ' +
+            'MP4/MOV/AVI solo admiten un subconjunto de campos EXIF.');
+        if (appliedList.length) {
+            parts.push('Aplicados: ' + appliedList.join(', ') + '.');
+        } else {
+            parts.push('No se aplico ningun campo mapeable al contenedor.');
+        }
+        if (ignoredList.length) {
+            parts.push('Ignorados (no soportados por el contenedor): ' +
+                ignoredList.join(', ') + '.');
+        }
+        note.innerHTML = parts.join(' ');
+    }
+
     function processFile() {
         if (!state.file) {
             return;
@@ -357,12 +405,18 @@
             form.append('custom', JSON.stringify(state.customJson));
         }
 
-        var endpoint = isVideo(state.file)
+        var isVideoFile = isVideo(state.file);
+        var endpoint = isVideoFile
             ? API_BASE + '/edit-video'
             : API_BASE + '/edit-image';
 
         setProcessing(true);
         $('result-section').style.display = 'none';
+
+        // Cabeceras que el backend usa para informar que campos se aplicaron o
+        // se ignoraron al editar video (los contenedores no llevan optica EXIF).
+        var appliedMeta = '';
+        var ignoredMeta = '';
 
         fetch(endpoint, { method: 'POST', body: form })
             .then(function (res) {
@@ -376,6 +430,8 @@
                             throw new Error('Error del servidor (HTTP ' + res.status + ')');
                         });
                 }
+                appliedMeta = res.headers.get('X-Applied-Metadata') || '';
+                ignoredMeta = res.headers.get('X-Ignored-Metadata') || '';
                 return res.blob();
             })
             .then(function (blob) {
@@ -387,6 +443,8 @@
                 var link = $('download-link');
                 link.href = state.downloadUrl;
                 link.setAttribute('download', 'edited-' + state.file.name);
+
+                showVideoMetaNote(isVideoFile, appliedMeta, ignoredMeta);
 
                 $('result-section').style.display = 'block';
             })

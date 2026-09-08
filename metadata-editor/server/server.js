@@ -18,6 +18,12 @@ const multer = require('multer');
 const app = express();
 
 const PORT = process.env.PORT || 3000;
+// Esta herramienta fabrica identidad de camara y coordenadas GPS y NO tiene
+// autenticacion (uso local/educativo). Por eso se enlaza a 127.0.0.1 por
+// defecto para no exponer un servicio anonimo de falsificacion de metadata en
+// una interfaz enrutable. Se puede sobreescribir con HOST=0.0.0.0 si el usuario
+// entiende el riesgo (p. ej. entorno de laboratorio aislado).
+const HOST = process.env.HOST || '127.0.0.1';
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
 
@@ -54,9 +60,9 @@ app.use(function (err, req, res, next) {
   return next();
 });
 
-app.listen(PORT, function () {
+app.listen(PORT, HOST, function () {
   // eslint-disable-next-line no-console
-  console.log(`Editor de Metadatos EXIF corriendo en http://localhost:${PORT}`);
+  console.log(`Editor de Metadatos EXIF corriendo en http://${HOST}:${PORT}`);
 });
 
 module.exports = app;

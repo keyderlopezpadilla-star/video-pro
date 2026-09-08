@@ -30,6 +30,34 @@ const router = express.Router();
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
 fs.ensureDirSync(UPLOADS_DIR);
 
+// Extensiones/MIME aceptados por cada endpoint de edicion. La seleccion de
+// endpoint la hace el cliente, pero el servidor tambien valida para dar un
+// 400 claro (en vez de un 500 opaco de exiftool/ffmpeg) a cualquier llamador.
+const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.tif', '.tiff'];
+const VIDEO_EXTS = ['.mp4', '.mov', '.avi', '.m4v', '.mkv'];
+
+/**
+ * Comprueba que el archivo subido concuerda con el tipo esperado por el
+ * endpoint, mirando extension y (si esta disponible) el MIME.
+ * @param {Object} file objeto de Multer (req.file)
+ * @param {string} kind 'image' | 'video'
+ * @returns {boolean}
+ */
+function fileMatchesKind(file, kind) {
+  if (!file) {
+    return false;
+  }
+  const ext = path.extname(file.originalname || file.path || '').toLowerCase();
+  const mime = (file.mimetype || '').toLowerCase();
+  if (kind === 'image') {
+    return IMAGE_EXTS.indexOf(ext) !== -1 || mime.indexOf('image/') === 0;
+  }
+  if (kind === 'video') {
+    return VIDEO_EXTS.indexOf(ext) !== -1 || mime.indexOf('video/') === 0;
+  }
+  return false;
+}
+
 // Campos EXIF de las plantillas que NO se envian a video (solo aplican a imagen).
 // Para video se usan como -metadata make/model/etc.
 
@@ -155,6 +183,15 @@ router.post('/edit-image', upload.single('file'), async function (req, res) {
     return res.status(400).json({ error: 'No se recibio ningun archivo.' });
   }
   const filePath = req.file.path;
+
+  if (!fileMatchesKind(req.file, 'image')) {
+    await safeRemove(filePath);
+    return res.status(400).json({
+      error: 'El archivo no es una imagen soportada (JPG, PNG, TIFF). ' +
+        'Usa /edit-video para archivos de video.'
+    });
+  }
+
   try {
     const tags = buildTags(req.body || {});
     if (Object.keys(tags).length === 0) {
@@ -186,35 +223,66 @@ router.post('/edit-video', upload.single('file'), async function (req, res) {
     return res.status(400).json({ error: 'No se recibio ningun archivo.' });
   }
   const inputPath = req.file.path;
+
+  if (!fileMatchesKind(req.file, 'video')) {
+    await safeRemove(inputPath);
+    return res.status(400).json({
+      error: 'El archivo no es un video soportado (MP4, MOV, AVI). ' +
+        'Usa /edit-image para imagenes.'
+    });
+  }
+
   const ext = path.extname(req.file.originalname || inputPath) || '.mp4';
   const outputPath = path.join(UPLOADS_DIR, `${uuidv4()}${ext}`);
 
   try {
     const tags = buildTags(req.body || {});
 
-    // Mapeo de tags EXIF a claves de metadata reconocidas por contenedores de video.
-    const videoMetaMap = {
-      Make: 'make',
-      Model: 'model',
-      Software: 'encoder',
-      DateTimeOriginal: 'creation_time',
-      CreateDate: 'creation_time',
-      DeviceManufacturer: 'make',
-      DeviceModel: 'model'
+    // Los contenedores de video (MP4/MOV/AVI) solo llevan un subconjunto de la
+    // metadata EXIF. Cada clave de contenedor tiene una lista de tags EXIF
+    // candidatos en ORDEN DE PRECEDENCIA explicito: se usa el primero presente.
+    // Esto hace determinista la colision Make/DeviceManufacturer y
+    // Model/DeviceModel (el tag "principal" gana sobre el de "device").
+    const videoMetaPrecedence = {
+      make: ['Make', 'DeviceManufacturer'],
+      model: ['Model', 'DeviceModel'],
+      encoder: ['Software'],
+      creation_time: ['DateTimeOriginal', 'CreateDate']
     };
 
     const outputOptions = ['-c copy', '-map_metadata 0'];
-    const usedKeys = new Set();
-    for (const tagKey of Object.keys(tags)) {
-      const metaKey = videoMetaMap[tagKey];
-      if (!metaKey || usedKeys.has(metaKey)) {
+    const appliedTags = [];
+    for (const metaKey of Object.keys(videoMetaPrecedence)) {
+      const candidates = videoMetaPrecedence[metaKey];
+      let chosenTag = null;
+      for (const tagName of candidates) {
+        if (tags[tagName] !== undefined && tags[tagName] !== null && tags[tagName] !== '') {
+          chosenTag = tagName;
+          break;
+        }
+      }
+      if (!chosenTag) {
         continue;
       }
-      const value = String(tags[tagKey]).replace(/"/g, '');
-      outputOptions.push(`-metadata`);
+      const value = String(tags[chosenTag]).replace(/"/g, '');
+      outputOptions.push('-metadata');
       outputOptions.push(`${metaKey}=${value}`);
-      usedKeys.add(metaKey);
+      appliedTags.push(chosenTag);
     }
+
+    // Campos EXIF presentes que los contenedores de video no soportan (optica,
+    // lentes, etc.). Se informan al cliente para que avise al usuario en vez de
+    // descartarlos en silencio.
+    const ignoredTags = Object.keys(tags).filter(function (tagName) {
+      return appliedTags.indexOf(tagName) === -1;
+    });
+
+    // Exponemos que se aplico y que se ignoro via cabeceras (la respuesta es una
+    // descarga binaria, asi que no podemos usar el cuerpo JSON). El frontend las
+    // lee para mostrar un aviso.
+    res.setHeader('X-Applied-Metadata', appliedTags.join(','));
+    res.setHeader('X-Ignored-Metadata', ignoredTags.join(','));
+    res.setHeader('Access-Control-Expose-Headers', 'X-Applied-Metadata, X-Ignored-Metadata');
 
     await new Promise(function (resolve, reject) {
       ffmpeg(inputPath)

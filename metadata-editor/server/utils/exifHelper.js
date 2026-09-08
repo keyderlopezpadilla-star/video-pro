@@ -124,6 +124,47 @@ function coordRef(value, isLat) {
 }
 
 /**
+ * Parsea una coordenada GPS aceptando dos formatos que la UI puede sugerir:
+ *   - Decimal con signo:            "40.7128", "-74.0060"
+ *   - Decimal con sufijo cardinal:  "40.7128 N", "74.0060 W" (con o sin espacio)
+ *
+ * El sufijo cardinal (N/S/E/W) tiene prioridad sobre el signo: S y W fuerzan
+ * un valor negativo. Devuelve `null` si el valor esta vacio o no es numerico
+ * (de modo que quien llama pueda distinguir "no proporcionado / invalido").
+ *
+ * @param {*} raw valor recibido del formulario
+ * @returns {number|null} coordenada decimal con signo, o null si no es valida
+ */
+function parseCoordinate(raw) {
+  if (raw === undefined || raw === null) {
+    return null;
+  }
+  var str = String(raw).trim();
+  if (str === '') {
+    return null;
+  }
+
+  // Detectamos un sufijo/prefijo cardinal (N/S/E/W) sin distincion de mayusculas.
+  var hemiMatch = str.match(/[NSEWnsew]/);
+  var hemisphere = hemiMatch ? hemiMatch[0].toUpperCase() : null;
+
+  // Nos quedamos solo con la parte numerica (numero, signo y punto decimal).
+  var numericPart = str.replace(/[^0-9.+-]/g, '');
+  var value = Number(numericPart);
+  if (numericPart === '' || Number.isNaN(value)) {
+    return null;
+  }
+
+  if (hemisphere === 'S' || hemisphere === 'W') {
+    value = -Math.abs(value);
+  } else if (hemisphere === 'N' || hemisphere === 'E') {
+    value = Math.abs(value);
+  }
+
+  return value;
+}
+
+/**
  * Mapea los campos del formulario personalizado a nombres de tags EXIF validos.
  * Campos soportados: make, model, software, date, lat, lon.
  * @param {Object} custom objeto con campos del formulario
@@ -154,14 +195,16 @@ function buildTagsFromCustom(custom) {
     tags.ModifyDate = normalized;
   }
 
-  const lat = custom.lat === undefined || custom.lat === '' ? null : Number(custom.lat);
-  const lon = custom.lon === undefined || custom.lon === '' ? null : Number(custom.lon);
+  // parseCoordinate acepta tanto decimales con signo ("-74.0060") como el
+  // formato con sufijo cardinal que sugiere la UI ("40.7128 N", "74.0060 W").
+  const lat = parseCoordinate(custom.lat);
+  const lon = parseCoordinate(custom.lon);
 
-  if (lat !== null && !Number.isNaN(lat)) {
+  if (lat !== null) {
     tags.GPSLatitude = Math.abs(lat);
     tags.GPSLatitudeRef = coordRef(lat, true);
   }
-  if (lon !== null && !Number.isNaN(lon)) {
+  if (lon !== null) {
     tags.GPSLongitude = Math.abs(lon);
     tags.GPSLongitudeRef = coordRef(lon, false);
   }
@@ -229,5 +272,6 @@ module.exports = {
   DEVICE_TEMPLATES,
   readMetadata,
   writeImageMetadata,
-  buildTagsFromCustom
+  buildTagsFromCustom,
+  parseCoordinate
 };

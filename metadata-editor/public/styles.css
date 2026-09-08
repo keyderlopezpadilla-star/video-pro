@@ -326,6 +326,24 @@ header h1 {
     color: #63637f;
 }
 
+.form-hint {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    line-height: 1.4;
+}
+
+/* Aviso sobre campos aplicables a video (subconjunto del set EXIF completo). */
+.video-note {
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: var(--primary-soft);
+    border: 1px solid var(--primary);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
 .form-group input:focus {
     outline: none;
     border-color: var(--primary);

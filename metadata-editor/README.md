@@ -59,8 +59,32 @@ Los endpoints `POST` reciben `multipart/form-data` con el campo `file` y,
 opcionalmente, `template`, `make`, `model`, `software`, `date`, `lat`, `lon` y
 `custom` (JSON en string).
 
+`edit-image` y `edit-video` validan en el servidor que el archivo coincida con el
+tipo esperado (por extensión/MIME) y devuelven **400** si no coincide (por
+ejemplo, subir un video a `edit-image`), en vez de fallar con un 500 opaco.
+
 Plantillas incluidas: `rayban-meta`, `iphone-15-pro`, `samsung-s24-ultra`,
 `gopro-hero12`, `sony-a7iv`, `dji-mavic3`.
+
+### Coordenadas GPS (`lat` / `lon`)
+
+Se aceptan dos formatos, y ambos coinciden con lo que sugiere la UI:
+
+- Decimal con signo: `40.7128`, `-74.0060`.
+- Decimal con sufijo cardinal: `40.7128 N`, `74.0060 W` (con o sin espacio).
+
+El sufijo cardinal tiene prioridad sobre el signo (`S`/`W` fuerzan valor
+negativo). Un valor vacío o no numérico simplemente no escribe GPS.
+
+### Metadata en video (subconjunto)
+
+Los contenedores MP4/MOV/AVI **no** llevan la óptica EXIF completa. `edit-video`
+mapea solo `make`, `model`, `encoder` y `creation_time`, con precedencia
+explícita: `Make` gana sobre `DeviceManufacturer` y `Model` sobre `DeviceModel`.
+Los campos no soportados (apertura, ISO, lente, distancia focal, etc.) se
+informan al cliente mediante las cabeceras `X-Applied-Metadata` y
+`X-Ignored-Metadata`, y el frontend muestra un aviso con lo aplicado e ignorado
+en lugar de descartarlo en silencio.
 
 ## Instalación y uso
 
@@ -111,6 +135,18 @@ npm start
 
 ```
 http://localhost:3000
+```
+
+### Configuración de red (`HOST` / `PORT`)
+
+Como la herramienta fabrica identidad de cámara y coordenadas GPS y **no tiene
+autenticación**, el servidor se enlaza a `127.0.0.1` por defecto para no
+exponer un servicio anónimo de falsificación de metadata en una interfaz
+enrutable. Se puede sobreescribir con variables de entorno si entiendes el
+riesgo (por ejemplo, en un laboratorio aislado):
+
+```bash
+HOST=0.0.0.0 PORT=3000 npm start
 ```
 
 ## Nota sobre el entorno de build (sandbox)
