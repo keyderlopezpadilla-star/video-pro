@@ -1,0 +1,25 @@
+# 1. Crear estructura de carpetas
+mkdir metadata-editor && cd metadata-editor
+mkdir -p server/routes server/utils public uploads
+
+# 2. Crear archivos (copia el código de arriba en cada archivo)
+
+# 3. Instalar dependencias
+cd server
+npm install
+
+# 4. Instalar ExifTool (sistema operativo)
+# macOS:
+brew install exiftool
+
+# Linux:
+sudo apt-get install libimage-exiftool-perl
+
+# Windows:
+# Descargar de https://exiftool.org/
+
+# 5. Iniciar servidor
+npm start
+
+# 6. Abrir en navegador
+http://localhost:3000
