@@ -1,0 +1,15 @@
+# Dependencias (se reinstalan dentro de la imagen)
+node_modules
+server/node_modules
+
+# Archivos temporales de uploads (se recrean en tiempo de ejecucion)
+uploads/*
+
+# Git y metadatos
+.git
+.gitignore
+
+# Logs y varios
+*.log
+npm-debug.log*
+.DS_Store

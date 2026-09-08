@@ -149,11 +149,99 @@ riesgo (por ejemplo, en un laboratorio aislado):
 HOST=0.0.0.0 PORT=3000 npm start
 ```
 
+## Despliegue
+
+### Por qué Vercel (y el serverless en general) NO funciona
+
+Esta app **no** es un sitio estático ni una colección de funciones serverless.
+Es un servidor **Express de proceso persistente** que además **ejecuta binarios
+nativos del sistema** (`exiftool` y `ffmpeg`). Vercel y plataformas similares
+fallan por tres motivos:
+
+- **No hay proceso persistente.** El serverless levanta funciones efímeras por
+  petición; no mantiene vivo un servidor Express con estado ni la carpeta
+  temporal `uploads/`.
+- **No hay binarios de sistema.** `fluent-ffmpeg` necesita el binario `ffmpeg`
+  instalado, y `exiftool` requiere `perl` en tiempo de ejecución. Esos binarios
+  no existen en las funciones serverless.
+- **Hosting estático servía basura.** Al no ejecutar el backend, Vercel sirvió
+  como sitio estático los **archivos semilla obsoletos de la raíz del repo**
+  (`index.html`, `app.js`, `Javascript*.js`, `json.txt`, `bash.txt`), que son
+  restos previos a la app real. De ahí la página sin estilos y la API caída.
+
+La solución (Opción C) es desplegar en una plataforma que soporte un proceso
+Express persistente **y** binarios de sistema: **Render / Railway / Fly.io / un
+VPS con Docker**. El `Dockerfile` de `metadata-editor/` instala `ffmpeg` y
+`libimage-exiftool-perl` y arranca el servidor.
+
+### Opción 1: Docker en local
+
+Desde la raíz del repo (el contexto de build es `metadata-editor/`):
+
+```bash
+docker build -t metadata-editor ./metadata-editor
+docker run -p 3000:3000 metadata-editor
+```
+
+Luego abre:
+
+```
+http://localhost:3000
+```
+
+Deberías ver la UI dark mode completa (no la página semilla sin estilos).
+
+### Opción 2: Render (blueprint)
+
+El repo incluye un blueprint `render.yaml` en la raíz. Pasos:
+
+1. En Render: **New > Blueprint**.
+2. Conecta este repositorio; Render leerá `render.yaml` automáticamente.
+3. El blueprint define un servicio web **Docker** que construye desde
+   `./metadata-editor/Dockerfile` con contexto `./metadata-editor`, expone un
+   health check en `/` y fija `HOST=0.0.0.0`.
+4. Render **inyecta `PORT` automáticamente** y `server.js` ya lo respeta.
+5. Despliega y abre la URL pública que te asigne Render.
+
+### Opción 3: Railway (nota)
+
+Railway también sirve: crea un servicio **desde el Dockerfile**, fija el
+directorio raíz / contexto del build a `metadata-editor/`, deja que Railway
+**inyecte `PORT`** y añade la variable de entorno `HOST=0.0.0.0`.
+
+### Sobre `HOST=0.0.0.0` y la exposición sin autenticación
+
+El código usa `HOST=127.0.0.1` por defecto **a propósito**: esta herramienta
+fabrica identidad de cámara y coordenadas GPS y **no tiene autenticación**.
+Para que el contenedor sea alcanzable, el `Dockerfile` y el blueprint fijan
+`HOST=0.0.0.0`, lo que expone un servicio anónimo de falsificación de metadata
+en una interfaz enrutable. **Despliega solo en un contexto controlado / privado**
+y considera añadir autenticación o restricción de acceso antes de exponerlo
+públicamente.
+
+> Los archivos de la raíz del repo (`index.html`, `app.js`, `Javascript*.js`,
+> `json.txt`, `bash.txt`) son semillas obsoletas que la app **no** usa. Se
+> conservan a propósito; el despliegue está acotado a `metadata-editor/` vía
+> `dockerContext` / `dockerfilePath`, así que nunca se sirven.
+
 ## Nota sobre el entorno de build (sandbox)
 
-Este proyecto se generó en un entorno con red restringida. **No fue posible
-ejecutar `npm install` ni `npm start`** dentro del sandbox porque el registro de
-npm respondía con `403 Forbidden` y los binarios de `exiftool` y `ffmpeg` no
-estaban presentes. En consecuencia, la verificación en el sandbox se limitó a la
-validación de sintaxis (`node --check`). El flujo completo debe ejecutarse en un
-entorno con acceso a npm y con ExifTool y ffmpeg instalados.
+Este proyecto se generó en un entorno con red restringida (sin acceso externo).
+**No fue posible ejecutar `npm install`, `docker build` ni `docker run`** dentro
+del sandbox porque no hay acceso al registro de npm ni a Docker Hub, y los
+binarios de `exiftool` y `ffmpeg` no estaban presentes ni eran instalables. En
+consecuencia, la verificación en el sandbox se limitó a la **validación estática
+de sintaxis** (`node --check` sobre los `.js`, y validación de `package.json` /
+`render.yaml` / `Dockerfile`).
+
+**La construcción de la imagen y la ejecución en tiempo real NO se ejecutaron en
+este sandbox offline y deben ser verificadas por el usuario fuera del sandbox:**
+
+```bash
+docker build -t metadata-editor ./metadata-editor
+docker run -p 3000:3000 metadata-editor
+# abrir http://localhost:3000 y probar editar/leer imagen y video
+```
+
+y, para el despliegue gestionado, el blueprint de Render (o Railway) descrito
+arriba.
