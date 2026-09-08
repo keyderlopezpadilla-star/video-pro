@@ -65,7 +65,9 @@ function resolveExiftoolBin() {
     if (onPath) {
       return onPath;
     }
-    execFileSync('exiftool', ['-ver'], { stdio: 'ignore' });
+    // `timeout` acota este probe para que nunca pueda colgar el arranque si
+    // existiera un `exiftool` que se ejecuta pero no responde a -ver.
+    execFileSync('exiftool', ['-ver'], { stdio: 'ignore', timeout: 3000 });
     return 'exiftool';
   } catch (err) {
     // No hay exiftool de sistema utilizable; caemos al respaldo.

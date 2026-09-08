@@ -274,7 +274,17 @@ router.post('/edit-video', upload.single('file'), async function (req, res) {
       creation_time: ['DateTimeOriginal', 'CreateDate']
     };
 
-    const outputOptions = ['-c copy', '-map_metadata 0'];
+    // Construimos el comando ffmpeg como variable para poder anadir cada
+    // -metadata con la forma de DOS argumentos, que fluent-ffmpeg NO parte por
+    // espacios (ver nota mas abajo).
+    const command = ffmpeg(inputPath);
+
+    // `-c copy` y `-map_metadata 0` se pasan como un array de un solo argumento:
+    // fluent-ffmpeg parte cada cadena "flag valor" en dos tokens SOLO cuando
+    // resultan exactamente 2 partes, y estos dos casos cumplen esa condicion
+    // ('-c copy' -> ['-c','copy'], '-map_metadata 0' -> ['-map_metadata','0']).
+    command.outputOptions(['-c copy', '-map_metadata 0']);
+
     const appliedTags = [];
     for (const metaKey of Object.keys(videoMetaPrecedence)) {
       const candidates = videoMetaPrecedence[metaKey];
@@ -288,10 +298,15 @@ router.post('/edit-video', upload.single('file'), async function (req, res) {
       if (!chosenTag) {
         continue;
       }
-      const value = String(tags[chosenTag]).replace(/"/g, '');
-      // fluent-ffmpeg espera cada opcion como UN solo elemento del array; el
-      // flag y su valor van juntos en una sola cadena ('-metadata key=value').
-      outputOptions.push(`-metadata ${metaKey}=${value}`);
+      const value = String(tags[chosenTag]);
+      // IMPORTANTE: usamos la forma de DOS argumentos .outputOption(flag, valor).
+      // fluent-ffmpeg ^2.1.2 (lib/options/custom.js) solo parte una opcion por
+      // espacios cuando se la llama con UN unico argumento; con multiples
+      // argumentos hace doSplit=false y empuja cada argumento intacto. Asi, un
+      // valor con espacios (ej. Model 'Meta RW4008', Software 'Meta View 1.0' o
+      // un creation_time 'YYYY:MM:DD HH:MM:SS') se conserva como UN solo token
+      // argv y no corrompe el comando ffmpeg (el bug que causaba el 500).
+      command.outputOption('-metadata', `${metaKey}=${value}`);
       appliedTags.push(chosenTag);
     }
 
@@ -310,8 +325,7 @@ router.post('/edit-video', upload.single('file'), async function (req, res) {
     res.setHeader('Access-Control-Expose-Headers', 'X-Applied-Metadata, X-Ignored-Metadata');
 
     await new Promise(function (resolve, reject) {
-      ffmpeg(inputPath)
-        .outputOptions(outputOptions)
+      command
         .on('end', resolve)
         .on('error', reject)
         .save(outputPath);
